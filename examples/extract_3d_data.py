@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from pyson.utils import multi_thread
+# from pyson.utils import multi_thread
+from avcv.process import multi_thread
 import mmcv
 from glob import glob
 from tqdm import tqdm
@@ -128,17 +129,22 @@ def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
 
     proj_pcl = proj_pcl[mask]
     proj_pcl_attr = proj_pcl_attr[mask]
-
     # Colour code the points based on distance.
-    coloured_intensity = 255*cmap(proj_pcl_attr[:, 0]/30)
+    depth = np.concatenate([proj_pcl, proj_pcl_attr[:, :1]], 1)# xy,v
+    return depth
+
+def visualize_depth(img, depth):
+    proj_pcl, proj_pcl_attr = depth[:,:1], depth[:,1:]
+    coloured_intensity = 255*cmap(proj_pcl_attr/30)
     depth_map = np.zeros(img.shape[:2])
     # Draw a circle for each point.
     for i in range(proj_pcl.shape[0]):
         x,y = (int(proj_pcl[i, 0]), int(proj_pcl[i, 1]))
         cv2.circle(img, (x,y), 1, coloured_intensity[i])
         if y < depth_map.shape[0] and x<depth_map.shape[1]:
-            depth_map[y,x] = proj_pcl_attr[i, 0]
+            depth_map[y,x] = proj_pcl_attr[i]
     return depth_map
+
 # def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
 #     # Convert the pointcloud to homogeneous coordinates.
 #     pcl1 = np.concatenate((pcl, np.ones_like(pcl[:, 0:1])), axis=1)
@@ -268,8 +274,10 @@ def extract_tf_file(filename):
         # Display the LIDAR points on the image.
         depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
         # Display the label's 3D bounding box on the image.
-        out_depth_path = out_img_path.replace('/images/', '/depth/').replace('.jpg', '.png')
-        mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
+        out_depth_path = out_img_path.replace('/images/', '/depth/').replace('.jpg', '')
+        # mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
+        mmcv.mkdir_or_exist(os.path.dirname(out_depth_path))
+        np.save(out_depth_path, depth_map)
         anns = get_annotations(
             camera_calibration, frame.laser_labels, visibility)
         bbox_3d = np.array([_['vertex'] for _ in anns if _['vertex'] is not None])
@@ -324,11 +332,44 @@ Display the groundtruth 3D bounding boxes and LIDAR points on the front camera v
     sys.exit(0)
 # Open a .tfrecord
 
+def get_cmd(path):
+    return "python examples/extract_3d_data.py {}".format(path)
+
 filename = sys.argv[1]
 if os.path.isdir(filename):
     filenames = glob(os.path.join(filename, '*.tfrecord'))
-    for filename in filenames:
-        extract_tf_file(filename)
+    num_process = 10
+    nprocess = 0
+    prev_is_enter = False
+    s = ""
+    for i, filename in enumerate(filenames):
+        cmd = get_cmd(filename)
+        nprocess+=1
+
+
+        if not prev_is_enter and i!=0:
+            cmd = " | "+cmd
+        else:
+            cmd = cmd
+            prev_is_enter = False
+        s += cmd
+        if nprocess == num_process:
+            s+="\n"
+            prev_is_enter = True
+            nprocess = 0
+
+
+    with open('cmd.sh','w') as f:
+        f.write(s)
+
+    #     if i % num_process == 0 and i!=0:
+    #         cmd += "\n" 
+    #     else:
+    #         cmd += " | \t"
+    #     s += cmd
+    print(s)
+
+        # extract_tf_file(filename)
 
 else:
     extract_tf_file(filename)
