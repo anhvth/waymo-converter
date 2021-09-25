@@ -177,8 +177,28 @@ def visualize_depth(img, depth):
 #             proj_pcl[i, 1])), 1, coloured_intensity[i])
 
 
+def  is_complete_ann(annotation_path):
+    try:
+        mmcv.load(annotation_path)
+        return True
+    except:
+        return False
 
 def extract_tf_file(filename, item_path=None):
+    if item_path is not None:
+        name = os.path.basename(item_path).split('.')[0]
+    else:
+        name = os.path.basename(filename).split('.')[0]
+
+    annotation_path = f'./data/annotations/train_{name}.json'
+    if is_complete_ann(annotation_path):
+        return
+    # import ipdb; ipdb.set_trace()
+    if  not isinstance(filename, str):
+        with open("tfs/"+item_path, 'wb') as f:
+            f.write(filename.read())
+        print("Dump tf",item_path)
+        return
     datafile = WaymoDataFileReader(filename)
 
     # Generate a table of the offset of all frame records in the file.
@@ -187,17 +207,14 @@ def extract_tf_file(filename, item_path=None):
     print("There are %d frames in this file." % len(table))
     # Loop through the whole file
     # and display 3D labels.
-    img_prefex = './data/images'
+    img_prefex = './data/image'
 
     os.makedirs(img_prefex, exist_ok=True)
-    if item_path is not None:
-        filename = item_path
-    name = os.path.basename(filename).split('.')[0]
-    annotation_path = f'./data/annotations/train_{name}.json'
+
     os.makedirs(os.path.dirname(annotation_path), exist_ok=True)
     images = []
     annotations = []
-    for frameno, frame in tqdm(enumerate(datafile), total=len(table)):
+    for frame_id, frame in enumerate(datafile):
 
         # Get the top laser information
         laser_name = dataset_pb2.LaserName.TOP
@@ -214,13 +231,14 @@ def extract_tf_file(filename, item_path=None):
             frame, ri, camera_projection, range_image_pose, laser_calibration)
 
         # Get the front camera information
-        camera_name = dataset_pb2.CameraName.FRONT
+        camera_name_id = dataset_pb2.CameraName.FRONT
+        camera_name = 'front'
         camera_calibration = utils.get(
-            frame.context.camera_calibrations, camera_name)
-        camera = utils.get(frame.images, camera_name)
+            frame.context.camera_calibrations, camera_name_id)
+        camera = utils.get(frame.images, camera_name_id)
         out_img_path = os.path.join(
-            img_prefex, f'{name}_{camera_name}_{frameno}.jpg')
-
+            img_prefex, f'{name}/{camera_name}_{frame_id}.jpg')
+        print(out_img_path)
         # Get the transformation matrix for the camera.
         vehicle_to_image = utils.get_image_transform(camera_calibration)
 
@@ -230,15 +248,17 @@ def extract_tf_file(filename, item_path=None):
 
         height, width = img.shape[:2]
         images.append(dict(
-            file_name=os.path.basename(out_img_path), height=height, width=width, id=len(images)
+            camera_name=camera_name,
+        file_name=os.path.basename(out_img_path), height=height, width=width, id=len(images)
         ))
         image_id = images[-1]['id']
 
         # BGR to RGB
         
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        cv2.imwrite(out_img_path, img)
-
+        if not os.path.exists(out_img_path):
+            mmcv.imwrite(img, out_img_path)
+        assert os.path.exists(out_img_path), out_img_path
         # Some of the labels might be fully hidden therefore we attempt to compute the label visibility
         # by counting the number of LIDAR points inside each label bounding box.
 
@@ -268,13 +288,12 @@ def extract_tf_file(filename, item_path=None):
         # Display the LIDAR points on the image.
         depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
         # Display the label's 3D bounding box on the image.
-        out_depth_path = out_img_path.replace('/images/', '/depth/').replace('.jpg', '')
+        out_depth_path = out_img_path.replace('/image/', '/depth/').replace('.jpg', '')
         # mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
         mmcv.mkdir_or_exist(os.path.dirname(out_depth_path))
         np.save(out_depth_path, depth_map)
         anns = get_annotations(
             camera_calibration, frame.laser_labels, visibility)
-        bbox_3d = np.array([_['vertex'] for _ in anns if _['vertex'] is not None])
         for ann in anns:
             annotations.append(
                 dict(
@@ -336,15 +355,15 @@ if __name__ == '__main__':
         return "python examples/extract_3d_data.py {}".format(path)
 
     filename = sys.argv[1]
-    
     if os.path.isdir(filename):
         filenames = glob(os.path.join(filename, '*.tfrecord'))
-        filenames = glob(os.path.join(filename, '*.tar'))
-        num_process = 32
+        if len(filenames) == 0:
+            filenames = glob(os.path.join(filename, '*.tar'))
+        num_process = 48
         nprocess = 0
         prev_is_enter = False
         s = ""
-        for i, filename in enumerate(filenames):
+        for i, filename in enumerate(list(sorted(filenames))):
             cmd = get_cmd(filename)
             nprocess+=1
 
@@ -364,12 +383,29 @@ if __name__ == '__main__':
         with open('cmd.sh','w') as f:
             f.write(s)
         print(s)
+        # else:
+
+        #     from torch.utils.data.dataloader import DataLoader
+        #     from torch.utils.data import Dataset
+        #     class DS(Dataset):
+        #         def __init__(self, file_names):
+        #             self.file_names = filenames
+        #         def __len__(self):
+        #             return len(self.file_names)
+        #         def __getitem__(self, i):
+        #             extract_tf_file(filenames[i])
+        #             return None
+        #     ds = DS(filenames)
+        #     dl = DataLoader(ds, 48, num_workers=48)
+        #     for x in dl:
+        #         pass
+            # multi_thread(extract_tf_file, filenames)
+            
     elif '.tar' in filename:
         import tarfile
         f = open(filename, 'rb')
         tar = tarfile.open(fileobj=f, mode='r:') # Unpack tar
         for item in tar:
-            print('Extracting:', item.path)
             byte_file = tar.extractfile(item.path)
             extract_tf_file(byte_file, item.path)
     else:
