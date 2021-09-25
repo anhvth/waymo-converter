@@ -177,16 +177,8 @@ def visualize_depth(img, depth):
 #             proj_pcl[i, 1])), 1, coloured_intensity[i])
 
 
-if len(sys.argv) != 2:
-    print("""Usage: python display_laser_on_image.py <datafile>
-Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
-    sys.exit(0)
 
-    # Open a .tfrecord
-    # filename = sys.argv[1]
-
-
-def extract_tf_file(filename):
+def extract_tf_file(filename, item_path=None):
     datafile = WaymoDataFileReader(filename)
 
     # Generate a table of the offset of all frame records in the file.
@@ -198,6 +190,8 @@ def extract_tf_file(filename):
     img_prefex = './data/images'
 
     os.makedirs(img_prefex, exist_ok=True)
+    if item_path is not None:
+        filename = item_path
     name = os.path.basename(filename).split('.')[0]
     annotation_path = f'./data/annotations/train_{name}.json'
     os.makedirs(os.path.dirname(annotation_path), exist_ok=True)
@@ -326,50 +320,57 @@ def extract_tf_file(filename):
     print('annotation_path:', annotation_path)
 
 
-if len(sys.argv) != 2:
-    print("""Usage: python display_laser_on_image.py <datafile>
-Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
-    sys.exit(0)
-# Open a .tfrecord
+# if len(sys.argv) != 2:
+#     print("""Usage: python display_laser_on_image.py <datafile>
+# Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
+#     sys.exit(0)
 
-def get_cmd(path):
-    return "python examples/extract_3d_data.py {}".format(path)
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print("""Usage: python display_laser_on_image.py <datafile>
+    Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
+        sys.exit(0)
+    # Open a .tfrecord
 
-filename = sys.argv[1]
-if os.path.isdir(filename):
-    filenames = glob(os.path.join(filename, '*.tfrecord'))
-    num_process = 10
-    nprocess = 0
-    prev_is_enter = False
-    s = ""
-    for i, filename in enumerate(filenames):
-        cmd = get_cmd(filename)
-        nprocess+=1
+    def get_cmd(path):
+        return "python examples/extract_3d_data.py {}".format(path)
 
-
-        if not prev_is_enter and i!=0:
-            cmd = " | "+cmd
-        else:
-            cmd = cmd
-            prev_is_enter = False
-        s += cmd
-        if nprocess == num_process:
-            s+="\n"
-            prev_is_enter = True
-            nprocess = 0
+    filename = sys.argv[1]
+    
+    if os.path.isdir(filename):
+        filenames = glob(os.path.join(filename, '*.tfrecord'))
+        filenames = glob(os.path.join(filename, '*.tar'))
+        num_process = 32
+        nprocess = 0
+        prev_is_enter = False
+        s = ""
+        for i, filename in enumerate(filenames):
+            cmd = get_cmd(filename)
+            nprocess+=1
 
 
-    with open('cmd.sh','w') as f:
-        f.write(s)
+            if not prev_is_enter and i!=0:
+                cmd = " | "+cmd
+            else:
+                cmd = cmd
+                prev_is_enter = False
+            s += cmd
+            if nprocess == num_process:
+                s+="\n"
+                prev_is_enter = True
+                nprocess = 0
 
-    #     if i % num_process == 0 and i!=0:
-    #         cmd += "\n" 
-    #     else:
-    #         cmd += " | \t"
-    #     s += cmd
-    print(s)
 
-        # extract_tf_file(filename)
-
-else:
-    extract_tf_file(filename)
+        with open('cmd.sh','w') as f:
+            f.write(s)
+        print(s)
+    elif '.tar' in filename:
+        import tarfile
+        f = open(filename, 'rb')
+        tar = tarfile.open(fileobj=f, mode='r:') # Unpack tar
+        for item in tar:
+            print('Extracting:', item.path)
+            byte_file = tar.extractfile(item.path)
+            extract_tf_file(byte_file, item.path)
+    else:
+        extract_tf_file(filename)

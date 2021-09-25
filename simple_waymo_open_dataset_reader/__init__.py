@@ -18,7 +18,10 @@ from . import dataset_pb2
 
 class WaymoDataFileReader:
     def __init__(self, filename):
-        self.file = open(filename, "rb")
+        if isinstance(filename, str):
+            self.file = open(filename, "rb")
+        else:
+            self.file = filename
 
     def get_record_table(self):
         """ Generate and return a table of the offset of all frame records in the file.
