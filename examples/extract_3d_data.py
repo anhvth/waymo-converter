@@ -179,8 +179,8 @@ def visualize_depth(img, depth):
 
 def  is_complete_ann(annotation_path):
     try:
-        mmcv.load(annotation_path)
-        return True
+        # mmcv.load(annotation_path)
+        return os.path.exists(annotation_path)
     except:
         return False
 
@@ -193,12 +193,8 @@ def extract_tf_file(filename, item_path=None):
     annotation_path = f'./data/annotations/train_{name}.json'
     if is_complete_ann(annotation_path):
         return
-    # import ipdb; ipdb.set_trace()
-    if  not isinstance(filename, str):
-        with open("tfs/"+item_path, 'wb') as f:
-            f.write(filename.read())
-        print("Dump tf",item_path)
-        return
+
+    print("Proceessing", filename)
     datafile = WaymoDataFileReader(filename)
 
     # Generate a table of the offset of all frame records in the file.
@@ -214,96 +210,96 @@ def extract_tf_file(filename, item_path=None):
     os.makedirs(os.path.dirname(annotation_path), exist_ok=True)
     images = []
     annotations = []
-    for frame_id, frame in enumerate(datafile):
+    # import ipdb; ipdb.set_trace()
+    for frame_id, frame in tqdm(enumerate(datafile)):
+        try:
+            # Get the top laser information
+            laser_name = dataset_pb2.LaserName.TOP
+            laser = utils.get(frame.lasers, laser_name)
+            laser_calibration = utils.get(
+                frame.context.laser_calibrations, laser_name)
 
-        # Get the top laser information
-        laser_name = dataset_pb2.LaserName.TOP
-        laser = utils.get(frame.lasers, laser_name)
-        laser_calibration = utils.get(
-            frame.context.laser_calibrations, laser_name)
+            # Parse the top laser range image and get the associated projection.
+            ri, camera_projection, range_image_pose = utils.parse_range_image_and_camera_projection(
+                laser)
 
-        # Parse the top laser range image and get the associated projection.
-        ri, camera_projection, range_image_pose = utils.parse_range_image_and_camera_projection(
-            laser)
+            # Convert the range image to a point cloud.
+            pcl, pcl_attr = utils.project_to_pointcloud(
+                frame, ri, camera_projection, range_image_pose, laser_calibration)
 
-        # Convert the range image to a point cloud.
-        pcl, pcl_attr = utils.project_to_pointcloud(
-            frame, ri, camera_projection, range_image_pose, laser_calibration)
+            # Get the front camera information
+            camera_name_id = dataset_pb2.CameraName.FRONT
+            camera_name = 'front'
+            camera_calibration = utils.get(
+                frame.context.camera_calibrations, camera_name_id)
+            camera = utils.get(frame.images, camera_name_id)
+            out_img_path = os.path.join(
+                img_prefex, f'{name}/{camera_name}_{frame_id}.jpg')
+            # print(out_img_path)
+            # Get the transformation matrix for the camera.
+            vehicle_to_image = utils.get_image_transform(camera_calibration)
 
-        # Get the front camera information
-        camera_name_id = dataset_pb2.CameraName.FRONT
-        camera_name = 'front'
-        camera_calibration = utils.get(
-            frame.context.camera_calibrations, camera_name_id)
-        camera = utils.get(frame.images, camera_name_id)
-        out_img_path = os.path.join(
-            img_prefex, f'{name}/{camera_name}_{frame_id}.jpg')
-        print(out_img_path)
-        # Get the transformation matrix for the camera.
-        vehicle_to_image = utils.get_image_transform(camera_calibration)
+            # Decode the image
+            img = utils.decode_image(camera)
+            # Save to disk
 
-        # Decode the image
-        img = utils.decode_image(camera)
-        # Save to disk
+            height, width = img.shape[:2]
+            images.append(dict(
+                camera_name=camera_name,
+            file_name=os.path.basename(out_img_path), height=height, width=width, id=len(images)
+            ))
+            image_id = images[-1]['id']
 
-        height, width = img.shape[:2]
-        images.append(dict(
-            camera_name=camera_name,
-        file_name=os.path.basename(out_img_path), height=height, width=width, id=len(images)
-        ))
-        image_id = images[-1]['id']
+            # BGR to RGB
+            
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            if not os.path.exists(out_img_path):
+                mmcv.imwrite(img, out_img_path)
+            assert os.path.exists(out_img_path), out_img_path
+            # For each label, compute the transformation matrix from the vehicle space to the box space.
+            vehicle_to_labels = [np.linalg.inv(utils.get_box_transformation_matrix(
+                label.box)) for label in frame.laser_labels]
+            vehicle_to_labels = np.stack(vehicle_to_labels)
 
-        # BGR to RGB
-        
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if not os.path.exists(out_img_path):
-            mmcv.imwrite(img, out_img_path)
-        assert os.path.exists(out_img_path), out_img_path
-        # Some of the labels might be fully hidden therefore we attempt to compute the label visibility
-        # by counting the number of LIDAR points inside each label bounding box.
+            # Convert the pointcloud to homogeneous coordinates.
+            pcl1 = np.concatenate((pcl, np.ones_like(pcl[:, 0:1])), axis=1)
 
-        # For each label, compute the transformation matrix from the vehicle space to the box space.
-        vehicle_to_labels = [np.linalg.inv(utils.get_box_transformation_matrix(
-            label.box)) for label in frame.laser_labels]
-        vehicle_to_labels = np.stack(vehicle_to_labels)
+            # Transform the point cloud to the label space for each label.
+            # proj_pcl shape is [label, LIDAR point, coordinates]
+            proj_pcl = np.einsum('lij,bj->lbi', vehicle_to_labels, pcl1)
 
-        # Convert the pointcloud to homogeneous coordinates.
-        pcl1 = np.concatenate((pcl, np.ones_like(pcl[:, 0:1])), axis=1)
+            # For each pair of LIDAR point & label, check if the point is inside the label's box.
+            # mask shape is [label, LIDAR point]
+            mask = np.logical_and.reduce(np.logical_and(
+                proj_pcl >= -1, proj_pcl <= 1), axis=2)
 
-        # Transform the point cloud to the label space for each label.
-        # proj_pcl shape is [label, LIDAR point, coordinates]
-        proj_pcl = np.einsum('lij,bj->lbi', vehicle_to_labels, pcl1)
+            # Count the points inside each label's box.
+            counts = mask.sum(1)
 
-        # For each pair of LIDAR point & label, check if the point is inside the label's box.
-        # mask shape is [label, LIDAR point]
-        mask = np.logical_and.reduce(np.logical_and(
-            proj_pcl >= -1, proj_pcl <= 1), axis=2)
+            # Keep boxes which contain at least 10 LIDAR points.
+            visibility = counts > 10
 
-        # Count the points inside each label's box.
-        counts = mask.sum(1)
-
-        # Keep boxes which contain at least 10 LIDAR points.
-        visibility = counts > 10
-
-        # Display the LIDAR points on the image.
-        depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
-        # Display the label's 3D bounding box on the image.
-        out_depth_path = out_img_path.replace('/image/', '/depth/').replace('.jpg', '')
-        # mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
-        mmcv.mkdir_or_exist(os.path.dirname(out_depth_path))
-        np.save(out_depth_path, depth_map)
-        anns = get_annotations(
-            camera_calibration, frame.laser_labels, visibility)
-        for ann in anns:
-            annotations.append(
-                dict(
-                    bbox_3d=ann['vertex'].tolist(
-                    ) if ann['vertex'] is not None else None,
-                    image_id=image_id,
-                    category_id=int(ann['label'].type),
-                    id=len(annotations)
+            # Display the LIDAR points on the image.
+            depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
+            # Display the label's 3D bounding box on the image.
+            out_depth_path = out_img_path.replace('/image/', '/depth/').replace('.jpg', '')
+            # mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
+            mmcv.mkdir_or_exist(os.path.dirname(out_depth_path))
+            np.save(out_depth_path, depth_map)
+            anns = get_annotations(
+                camera_calibration, frame.laser_labels, visibility)
+            for ann in anns:
+                annotations.append(
+                    dict(
+                        bbox_3d=ann['vertex'].tolist(
+                        ) if ann['vertex'] is not None else None,
+                        image_id=image_id,
+                        category_id=int(ann['label'].type),
+                        id=len(annotations)
+                    )
                 )
-            )
+        except:
+            print("Ignore frame id: ", frame_id, filename)
 
     # multi_thread(f, enumerate(datafile), verbose=True)
     categories = [
@@ -359,11 +355,15 @@ if __name__ == '__main__':
         filenames = glob(os.path.join(filename, '*.tfrecord'))
         if len(filenames) == 0:
             filenames = glob(os.path.join(filename, '*.tar'))
-        num_process = 48
+        num_process = 32
         nprocess = 0
         prev_is_enter = False
         s = ""
-        for i, filename in enumerate(list(sorted(filenames))):
+        for i, filename in tqdm(enumerate(list(sorted(filenames)))):
+            # fn = 'train_'+os.path.basename(filename).replace('.tfrecord', '.json')
+            # ann_path = './data/annotations/'+fn
+            # if is_complete_ann(ann_path):
+            #     continue
             cmd = get_cmd(filename)
             nprocess+=1
 
@@ -403,10 +403,16 @@ if __name__ == '__main__':
             
     elif '.tar' in filename:
         import tarfile
+        print('TAR:', filename)
         f = open(filename, 'rb')
         tar = tarfile.open(fileobj=f, mode='r:') # Unpack tar
         for item in tar:
-            byte_file = tar.extractfile(item.path)
-            extract_tf_file(byte_file, item.path)
+            try:
+                if item.path.endswith('tfrecord'):
+                    byte_file = tar.extractfile(item.path)
+                    extract_tf_file(byte_file, item.path)
+            except Exception as e:
+                print(e)
+                import ipdb; ipdb.set_trace()
     else:
         extract_tf_file(filename)
