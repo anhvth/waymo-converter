@@ -348,7 +348,7 @@ if __name__ == '__main__':
     # Open a .tfrecord
 
     def get_cmd(path):
-        return "python examples/extract_3d_data.py {}".format(path)
+        return "python tools/extract_3d_data.py {}".format(path)
 
     filename = sys.argv[1]
     if os.path.isdir(filename):
