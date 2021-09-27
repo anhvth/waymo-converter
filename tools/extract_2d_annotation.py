@@ -211,6 +211,7 @@ def extract_tf_file(filename, item_path=None):
                 category_id=label.type,
                 id = len(annotations),
                 image_id=frame_id,
+                track_id=label.id,
             )
             annotations.append(ann)
 
