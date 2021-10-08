@@ -281,6 +281,9 @@ def extract_tf_file(filename, item_path=None):
 
             # Display the LIDAR points on the image.
             depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
+            
+            # xi,yi,vi  (0.5, 1.6, 10m) # s[x,y,1]
+
             # Display the label's 3D bounding box on the image.
             out_depth_path = out_img_path.replace('/image/', '/depth/').replace('.jpg', '')
             # mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
@@ -289,13 +292,15 @@ def extract_tf_file(filename, item_path=None):
             anns = get_annotations(
                 camera_calibration, frame.laser_labels, visibility)
             for ann in anns:
+                import ipdb; ipdb.set_trace()
                 annotations.append(
                     dict(
+                        track_id=ann['dfdf'],#
                         bbox_3d=ann['vertex'].tolist(
-                        ) if ann['vertex'] is not None else None,
+                        ) if ann['vertex'] is not None else None, #xi,yi,zi
                         image_id=image_id,
-                        category_id=int(ann['label'].type),
-                        id=len(annotations)
+                        category_id=int(ann['label'].type),# 4 class , 3 class di duyen, 1 class SIGN, 
+                        id=len(annotations),
                     )
                 )
         except:
