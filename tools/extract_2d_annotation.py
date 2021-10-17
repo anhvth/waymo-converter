@@ -13,8 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # from pyson.utils import multi_thread
+from genericpath import exists
 from avcv.process import multi_thread
 import mmcv
+import tarfile
 from glob import glob
 from tqdm import tqdm
 import json
@@ -170,15 +172,15 @@ def extract_tf_file(filename, item_path=None):
 
     annotation_path = f'./data/annotations_2d/train_{name}.json'
     if is_complete_ann(annotation_path):
-        return
+        return annotation_path
 
-    print("Proceessing", name)
+    # print("Proceessing", name)
     datafile = WaymoDataFileReader(filename)
 
     # Generate a table of the offset of all frame records in the file.
     table = datafile.get_record_table()
 
-    print("There are %d frames in this file." % len(table))
+    # print("There are %d frames in this file." % len(table))
     # Loop through the whole file
     # and display 3D labels.
     img_prefex = './data/image'
@@ -189,23 +191,33 @@ def extract_tf_file(filename, item_path=None):
     images = []
     annotations = []
     from PIL import Image
-    for frame_id, frame in tqdm(enumerate(datafile)):
+    for frame_id, frame in enumerate(datafile):
         front_labels = frame.camera_labels[0]
         assert front_labels.name == dataset_pb2.CameraName.FRONT
 
         camera_name = 'front'
         out_img_path = os.path.join(img_prefex, f'{name}/{camera_name}_{frame_id}.jpg')
-        width, height = Image.open(out_img_path).size
+        # try:
+        #     width, height = Image.open(out_img_path).size
+        # except:
+        #     camera = utils.get(frame.images, dataset_pb2.CameraName.FRONT)
+        #     img = utils.decode_image(camera)
+        #     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        #     if not os.path.exists(out_img_path):
+        #         mmcv.imwrite(img, out_img_path)
+        #     width, height = Image.open(out_img_path).size
+        
+        height, width = 1280, 1920
         images.append(dict(
             camera_name=camera_name,
         file_name=os.path.basename(out_img_path), height=height, width=width, id=len(images)
         ))
         for label in front_labels.labels:
             bbox = label.box
-            x = bbox.center_x - bbox.width/2
-            y = bbox.center_y - bbox.height/2
-            h = bbox.height
-            w = bbox.width
+            w = bbox.length  # box.length: dim x
+            h = bbox.width  # box.width: dim y
+            x = bbox.center_x - w / 2
+            y = bbox.center_y - h / 2
             ann = dict(
                 bbox=[x,y,w,h],
                 category_id=label.type,
@@ -214,91 +226,6 @@ def extract_tf_file(filename, item_path=None):
                 track_id=label.id,
             )
             annotations.append(ann)
-
-        # Get the top laser information
-        # laser_name = dataset_pb2.LaserName.TOP
-        # laser = utils.get(frame.lasers, laser_name)
-        # laser_calibration = utils.get(
-        #     frame.context.laser_calibrations, laser_name)
-
-        # # Parse the top laser range image and get the associated projection.
-        # ri, camera_projection, range_image_pose = utils.parse_range_image_and_camera_projection(
-        #     laser)
-
-        # # Convert the range image to a point cloud.
-        # pcl, pcl_attr = utils.project_to_pointcloud(
-        #     frame, ri, camera_projection, range_image_pose, laser_calibration)
-
-        # # Get the front camera information
-        # camera_name_id = dataset_pb2.CameraName.FRONT
-        # camera_calibration = utils.get(
-        #     frame.context.camera_calibrations, camera_name_id)
-        # camera = utils.get(frame.images, camera_name_id)
-
-        # # print(out_img_path)
-        # # Get the transformation matrix for the camera.
-        # vehicle_to_image = utils.get_image_transform(camera_calibration)
-
-        # # Decode the image
-        # img = utils.decode_image(camera)
-        # # Save to disk
-
-        # height, width = img.shape[:2]
-        # images.append(dict(
-        #     camera_name=camera_name,
-        # file_name=os.path.basename(out_img_path), height=height, width=width, id=len(images)
-        # ))
-        # image_id = images[-1]['id']
-
-        # # BGR to RGB
-        
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # if not os.path.exists(out_img_path):
-        #     mmcv.imwrite(img, out_img_path)
-        # assert os.path.exists(out_img_path), out_img_path
-        # # For each label, compute the transformation matrix from the vehicle space to the box space.
-        # vehicle_to_labels = [np.linalg.inv(utils.get_box_transformation_matrix(
-        #     label.box)) for label in frame.laser_labels]
-        # vehicle_to_labels = np.stack(vehicle_to_labels)
-
-        # # Convert the pointcloud to homogeneous coordinates.
-        # pcl1 = np.concatenate((pcl, np.ones_like(pcl[:, 0:1])), axis=1)
-
-        # # Transform the point cloud to the label space for each label.
-        # # proj_pcl shape is [label, LIDAR point, coordinates]
-        # proj_pcl = np.einsum('lij,bj->lbi', vehicle_to_labels, pcl1)
-
-        # # For each pair of LIDAR point & label, check if the point is inside the label's box.
-        # # mask shape is [label, LIDAR point]
-        # mask = np.logical_and.reduce(np.logical_and(
-        #     proj_pcl >= -1, proj_pcl <= 1), axis=2)
-
-        # # Count the points inside each label's box.
-        # counts = mask.sum(1)
-
-        # # Keep boxes which contain at least 10 LIDAR points.
-        # visibility = counts > 10
-
-        # # Display the LIDAR points on the image.
-        # depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
-        # # Display the label's 3D bounding box on the image.
-        # out_depth_path = out_img_path.replace('/image/', '/depth/').replace('.jpg', '')
-        # # mmcv.imwrite((depth_map*1000).astype(np.uint16), out_depth_path)
-        # mmcv.mkdir_or_exist(os.path.dirname(out_depth_path))
-        # np.save(out_depth_path, depth_map)
-        # anns = get_annotations(
-        #     camera_calibration, frame.laser_labels, visibility)
-        # for ann in anns:
-        #     annotations.append(
-        #         dict(
-        #             bbox_3d=ann['vertex'].tolist(
-        #             ) if ann['vertex'] is not None else None,
-        #             image_id=image_id,
-        #             category_id=int(ann['label'].type),
-        #             id=len(annotations)
-        #         )
-        #     )
-
     # multi_thread(f, enumerate(datafile), verbose=True)
     categories = [
         {
@@ -329,14 +256,46 @@ def extract_tf_file(filename, item_path=None):
             annotations=annotations,
             categories=categories
         ), f)
+    return annotation_path
 
-    print('annotation_path:', annotation_path)
+    # print('annotation_path:', annotation_path)
 
 
-# if len(sys.argv) != 2:
-#     print("""Usage: python display_laser_on_image.py <datafile>
-# Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
-#     sys.exit(0)
+import concurrent
+
+# def extract_tar(filename):
+#     import tarfile
+#     print('TAR:', filename)
+#     f = open(filename, 'rb')
+#     tar = tarfile.open(fileobj=f, mode='r:') # Unpack tar
+#     with concurrent.futures.
+#     for item in tar:
+#         if item.path.endswith('tfrecord'):
+#             byte_file = tar.extractfile(item.path)
+#             # extract_tf_file(byte_file, item.path)
+
+
+        # Start the load operations and mark each future with its URL
+        # future_to_url = {executor.submit(load_url, url, 60): url for url in URLS}
+        # for future in concurrent.futures.as_completed(future_to_url):
+        #     url = future_to_url[future]
+        #     try:
+        #         data = future.result()
+        #     except Exception as exc:
+        #         print('%r generated an exception: %s' % (url, exc))
+        #     else:
+        #         print('%r page is %d bytes' % (url, len(data)))
+
+
+
+def extract_tar(tf):
+    f = open(tf, 'rb')
+    tar = tarfile.open(fileobj=f, mode='r:') # Unpack tar        
+    for item in tar:
+        if item.path.endswith('tfrecord'):
+            byte_file = tar.extractfile(item.path)
+            extract_tf_file(byte_file, item.path)
+    return tf
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
@@ -349,68 +308,23 @@ if __name__ == '__main__':
         return "python tools/extract_2d_annotation.py {}".format(path)
 
     filename = sys.argv[1]
-    if os.path.isdir(filename):
-        filenames = glob(os.path.join(filename, '*.tfrecord'))
-        if len(filenames) == 0:
-            filenames = glob(os.path.join(filename, '*.tar'))
-        num_process = 32
-        nprocess = 0
-        prev_is_enter = False
-        s = ""
-        for i, filename in tqdm(enumerate(list(sorted(filenames)))):
-            # fn = 'train_'+os.path.basename(filename).replace('.tfrecord', '.json')
-            # ann_path = './data/annotations/'+fn
-            # if is_complete_ann(ann_path):
-            #     continue
-            cmd = get_cmd(filename)
-            nprocess+=1
+    if os.path.isdir(filename) or filename.endswith('.tar'):
+        if filename.endswith('.tar'):
+            filenames = [filename]
+        else:
+            filenames = glob(os.path.join(filename, '*.tar'))[:1]
 
-
-            if not prev_is_enter and i!=0:
-                cmd = " | "+cmd
-            else:
-                cmd = cmd
-                prev_is_enter = False
-            s += cmd
-            if nprocess == num_process:
-                s+="\n"
-                prev_is_enter = True
-                nprocess = 0
-
-
-        with open('cmd.sh','w') as f:
-            f.write(s)
-        print(s)
-        # else:
-
-        #     from torch.utils.data.dataloader import DataLoader
-        #     from torch.utils.data import Dataset
-        #     class DS(Dataset):
-        #         def __init__(self, file_names):
-        #             self.file_names = filenames
-        #         def __len__(self):
-        #             return len(self.file_names)
-        #         def __getitem__(self, i):
-        #             extract_tf_file(filenames[i])
-        #             return None
-        #     ds = DS(filenames)
-        #     dl = DataLoader(ds, 48, num_workers=48)
-        #     for x in dl:
-        #         pass
-            # multi_thread(extract_tf_file, filenames)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            future_results = []
             
-    elif '.tar' in filename:
-        import tarfile
-        print('TAR:', filename)
-        f = open(filename, 'rb')
-        tar = tarfile.open(fileobj=f, mode='r:') # Unpack tar
-        for item in tar:
-            try:
-                if item.path.endswith('tfrecord'):
-                    byte_file = tar.extractfile(item.path)
-                    extract_tf_file(byte_file, item.path)
-            except Exception as e:
-                print(e)
-                import ipdb; ipdb.set_trace()
-    else:
+            pbar = tqdm(filenames, total=len(filenames), desc='Preparing multiprocess poll')
+            for tf in pbar:
+                future_results.append(executor.submit(extract_tar, tf))
+                pbar.set_description(f'Preparing multiprocess poll {tf}')
+
+            pbar = tqdm(concurrent.futures.as_completed(future_results))
+            for f_result in pbar:
+                pbar.set_description("Resulting:", f_result.result())
+
+    elif filename.endswith('.tfrecord'):
         extract_tf_file(filename)

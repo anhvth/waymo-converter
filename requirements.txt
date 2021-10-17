@@ -1,4 +1,2 @@
 tensorboard                      2.6.0
 tensorboard-data-server          0.6.1
-tensorboard-plugin-wit           1.8.0
-tensorflow-estimator             2.5.0

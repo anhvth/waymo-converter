@@ -292,10 +292,9 @@ def extract_tf_file(filename, item_path=None):
             anns = get_annotations(
                 camera_calibration, frame.laser_labels, visibility)
             for ann in anns:
-                import ipdb; ipdb.set_trace()
                 annotations.append(
                     dict(
-                        track_id=ann['dfdf'],#
+                        # track_id=ann['dfdf'],#
                         bbox_3d=ann['vertex'].tolist(
                         ) if ann['vertex'] is not None else None, #xi,yi,zi
                         image_id=image_id,
