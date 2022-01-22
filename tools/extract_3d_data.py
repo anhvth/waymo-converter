@@ -120,18 +120,23 @@ def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
     proj_pcl_attr = pcl_attr[mask]
 
     # Project the point cloud onto the image.
-    proj_pcl = proj_pcl[:, :2]/proj_pcl[:, 2:3]
+    depth = proj_pcl
 
+    
+    proj_pcl = proj_pcl[:, :2]/proj_pcl[:, 2:3]
     # Filter points which are outside the image.
     mask = np.logical_and(
         np.logical_and(proj_pcl[:, 0] > 0, proj_pcl[:, 0] < img.shape[1]),
         np.logical_and(proj_pcl[:, 1] > 0, proj_pcl[:, 1] < img.shape[1]))
 
-    proj_pcl = proj_pcl[mask]
-    proj_pcl_attr = proj_pcl_attr[mask]
-    # Colour code the points based on distance.
-    depth = np.concatenate([proj_pcl, proj_pcl_attr[:, :1]], 1)# xy,v
+    # proj_pcl = proj_pcl[mask]
+    # proj_pcl_attr = proj_pcl_attr[mask]
+    depth = depth[mask]
     return depth
+    
+    # Colour code the points based on distance.
+    # depth = np.concatenate([proj_pcl, proj_pcl_attr[:, :1]], 1)# xy,v
+    # return depth
 
 def visualize_depth(img, depth):
     proj_pcl, proj_pcl_attr = depth[:,:1], depth[:,1:]

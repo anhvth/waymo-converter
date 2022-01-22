@@ -55,32 +55,32 @@ def display_laser_on_image(img, pcl, vehicle_to_image, pcl_attr):
     pcl1 = np.concatenate((pcl,np.ones_like(pcl[:,0:1])),axis=1)
 
     # Transform the point cloud to image space.
-    visualize_point_cloud(pcl)
     proj_pcl = np.einsum('ij,bj->bi', vehicle_to_image, pcl1) 
 
     # Filter LIDAR points which are behind the camera.
     mask = proj_pcl[:,2] > 0
     proj_pcl = proj_pcl[mask]
     proj_pcl_attr = pcl_attr[mask]
-    # visualize_point_cloud(proj_pcl)
+    # 
 
     # Project the point cloud onto the image.
-    proj_pcl = proj_pcl[:,:2]/proj_pcl[:,2:3] # devide over z
+    proj_pcl_2d = proj_pcl[:,:2]/proj_pcl[:,2:3] # devide over z
 
     # Filter points which are outside the image.
     mask = np.logical_and(
-        np.logical_and(proj_pcl[:,0] > 0, proj_pcl[:,0] < img.shape[1]),
-        np.logical_and(proj_pcl[:,1] > 0, proj_pcl[:,1] < img.shape[1]))
+        np.logical_and(proj_pcl_2d[:,0] > 0, proj_pcl_2d[:,0] < img.shape[1]),
+        np.logical_and(proj_pcl_2d[:,1] > 0, proj_pcl_2d[:,1] < img.shape[1]))
 
+    proj_pcl_2d = proj_pcl_2d[mask]
     proj_pcl = proj_pcl[mask]
     proj_pcl_attr = proj_pcl_attr[mask]
 
     # Colour code the points based on distance.
-    coloured_intensity = 255*cmap(proj_pcl_attr[:,0]/30)
+    coloured_intensity = 255*cmap(proj_pcl[:,2]/30)
 
     # Draw a circle for each point.
-    for i in range(proj_pcl.shape[0]):
-        cv2.circle(img, (int(proj_pcl[i,0]),int(proj_pcl[i,1])), 1, coloured_intensity[i])
+    for i in range(proj_pcl_2d.shape[0]):
+        cv2.circle(img, (int(proj_pcl_2d[i,0]),int(proj_pcl_2d[i,1])), 1, coloured_intensity[i])
 
 if len(sys.argv) != 2:
     print("""Usage: python display_laser_on_image.py <datafile>
@@ -154,11 +154,6 @@ for frameno,frame in enumerate(datafile):
 
     # Display the LIDAR points on the image.
     display_laser_on_image(img, point_clound, vehicle_to_image, point_cloud_attr)
-    
-
-
-
-
     # Display the label's 3D bounding box on the image.
     display_labels_on_image(camera_calibration, img, frame.laser_labels, visibility)
 
