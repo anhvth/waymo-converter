@@ -356,8 +356,8 @@ if __name__ == '__main__':
         sys.exit(0)
     # Open a .tfrecord
 
-    def get_cmd(path):
-        return "python tools/extract_3d_data.py {}".format(path)
+    def get_cmd(id, path):
+        return f'tmux new -s extract_3d_{id} -d "python tools/extract_3d_data.py {path} && echo done && sleep 3600"'
 
     filename = sys.argv[1]
     if os.path.isdir(filename):
@@ -373,7 +373,7 @@ if __name__ == '__main__':
             # ann_path = './data/annotations/'+fn
             # if is_complete_ann(ann_path):
             #     continue
-            cmd = get_cmd(filename)
+            cmd = get_cmd(i, filename)
             nprocess+=1
 
 
