@@ -317,15 +317,16 @@ def compute_range_image_cartesian(range_image_polar, extrinsic, pixel_pose, fram
     return range_image_points
 
 
-def project_to_pointcloud(frame, ri, camera_projection, range_image_pose, calibration):
+def project_to_pointcloud(frame, range_image, camera_projection, range_image_pose, calibration):
+    # def project_to_pointcloud(frame, ri, camera_projection, range_image_pose, calibration):
     """ Create a pointcloud in vehicle space from LIDAR range image. """
-    beam_inclinations = compute_beam_inclinations(calibration, ri.shape[0])
+    beam_inclinations = compute_beam_inclinations(calibration, range_image.shape[0])
     beam_inclinations = np.flip(beam_inclinations)
 
     extrinsic = np.array(calibration.extrinsic.transform).reshape(4,4)
     frame_pose = np.array(frame.pose.transform).reshape(4,4)
 
-    ri_polar = compute_range_image_polar(ri[:,:,0], extrinsic, beam_inclinations)
+    ri_polar = compute_range_image_polar(range_image[:,:,0], extrinsic, beam_inclinations)
 
     if range_image_pose is None:
         pixel_pose = None
@@ -340,9 +341,9 @@ def project_to_pointcloud(frame, ri, camera_projection, range_image_pose, calibr
     ri_cartesian = compute_range_image_cartesian(ri_polar, extrinsic, pixel_pose, frame_pose)
     ri_cartesian = ri_cartesian.transpose(1,2,0)
 
-    mask = ri[:,:,0] > 0
+    mask = range_image[:,:,0] > 0
 
-    return ri_cartesian[mask,:3], ri[mask]
+    return ri_cartesian[mask,:3], range_image[mask]
 
 
 def get(object_list, name):
