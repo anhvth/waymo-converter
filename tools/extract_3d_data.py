@@ -357,7 +357,7 @@ if __name__ == '__main__':
     # Open a .tfrecord
 
     def get_cmd(path):
-        return "python tools/extract_3d_data.py {path} && echo done && sleep 3600"
+        return "python tools/extract_3d_data.py {path}"
         # return 
 
     filename = sys.argv[1]
@@ -381,11 +381,10 @@ if __name__ == '__main__':
         for i, cmd in enumerate(cmds):
             if i % num_process == 0 and i !=0 or i == len(cmds)-1:
                 f.write(f'\ntmux new -s gen_{i} -d "{_cmd}"')
-                # f.write(f'"{cmd}"')
-                _cmd += cmd
+            elif i% num_process == 0:
+                _cmd = cmd
             else:
-                # f.write(f'" && {cmd}"')
-                _cmd += f"&& {cmd}"
+                _cmd +=  {cmd}"
         f.close()
 
     elif '.tar' in filename:
