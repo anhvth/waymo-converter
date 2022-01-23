@@ -25,6 +25,7 @@ import io
 
 import os
 import sys
+import os.path as osp
 
 from simple_waymo_open_dataset_reader import WaymoDataFileReader
 from simple_waymo_open_dataset_reader import dataset_pb2, label_pb2
@@ -189,13 +190,13 @@ def  is_complete_ann(annotation_path):
     except:
         return False
 
-def extract_tf_file(filename, item_path=None):
+def extract_tf_file(filename, save_dir, item_path=None):
     if item_path is not None:
         name = os.path.basename(item_path).split('.')[0]
     else:
         name = os.path.basename(filename).split('.')[0]
 
-    annotation_path = f'./data/annotations/train_{name}.json'
+    annotation_path = osp.join(save_dir, f'annotations/train_{name}.json')
     if is_complete_ann(annotation_path):
         return
 
@@ -208,7 +209,7 @@ def extract_tf_file(filename, item_path=None):
     print("There are %d frames in this file." % len(table))
     # Loop through the whole file
     # and display 3D labels.
-    img_prefex = './data/image'
+    img_prefex = osp.join(save_dir, 'image')
 
     os.makedirs(img_prefex, exist_ok=True)
 
@@ -350,7 +351,7 @@ def extract_tf_file(filename, item_path=None):
 #     sys.exit(0)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print("""Usage: python display_laser_on_image.py <datafile>
     Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
         sys.exit(0)
@@ -360,6 +361,7 @@ if __name__ == '__main__':
         return f'tmux new -s extract_3d_{id} -d "python tools/extract_3d_data.py {path} && echo done && sleep 3600"'
 
     filename = sys.argv[1]
+    save_dir = sys.argv[2]
     if os.path.isdir(filename):
         filenames = glob(os.path.join(filename, '*.tfrecord'))
         if len(filenames) == 0:
@@ -392,23 +394,7 @@ if __name__ == '__main__':
         with open('cmd.sh','w') as f:
             f.write(s)
         print(s)
-        # else:
 
-        #     from torch.utils.data.dataloader import DataLoader
-        #     from torch.utils.data import Dataset
-        #     class DS(Dataset):
-        #         def __init__(self, file_names):
-        #             self.file_names = filenames
-        #         def __len__(self):
-        #             return len(self.file_names)
-        #         def __getitem__(self, i):
-        #             extract_tf_file(filenames[i])
-        #             return None
-        #     ds = DS(filenames)
-        #     dl = DataLoader(ds, 48, num_workers=48)
-        #     for x in dl:
-        #         pass
-            # multi_thread(extract_tf_file, filenames)
             
     elif '.tar' in filename:
         import tarfile
@@ -419,7 +405,7 @@ if __name__ == '__main__':
             try:
                 if item.path.endswith('tfrecord'):
                     byte_file = tar.extractfile(item.path)
-                    extract_tf_file(byte_file, item.path)
+                    extract_tf_file(byte_file, save_dir, item.path)
             except Exception as e:
                 print(e)
                 import ipdb; ipdb.set_trace()
