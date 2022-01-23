@@ -365,7 +365,7 @@ if __name__ == '__main__':
         filenames = glob(os.path.join(filename, '*.tfrecord'))
         if len(filenames) == 0:
             filenames = glob(os.path.join(filename, '*.tar'))
-        num_process = 4m
+        num_process = 4
         nprocess = 0
         prev_is_enter = False
         
