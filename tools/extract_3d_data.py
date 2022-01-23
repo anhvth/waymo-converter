@@ -384,7 +384,7 @@ if __name__ == '__main__':
             elif i% num_process == 0:
                 _cmd = cmd
             else:
-                _cmd +=  {cmd}"
+                _cmd +=  cmd
         f.close()
 
     elif '.tar' in filename:
