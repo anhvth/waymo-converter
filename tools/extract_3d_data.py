@@ -379,7 +379,7 @@ if __name__ == '__main__':
 
         _cmd = ''
         for i, cmd in enumerate(cmds):
-            if i % num_process == 0 and i !=0 :
+            if i % num_process == 0 and i !=0 or i == len(cmds)-1:
                 f.write(f'\ntmux new -s gen_{i} -d "{_cmd}"')
                 # f.write(f'"{cmd}"')
                 _cmd += cmd
