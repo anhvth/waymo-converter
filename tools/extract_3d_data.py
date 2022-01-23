@@ -374,17 +374,14 @@ if __name__ == '__main__':
         cmds = []
         for filename in list(sorted(filenames)):
             cmd = get_cmd(filename)
-            cmds += cmd
+            cmds += [cmd]
 
         for i, cmd in enumerate(cmds):
             if i % num_process == 0:
                 f.write(f"\ntmux new -s gen_{i} -d ")
-
                 f.write(f'"{cmd}"')
             else:
                 f.write(f'" && {cmd}"')
-
-        
         f.close()
 
     elif '.tar' in filename:
