@@ -82,14 +82,14 @@ def display_laser_on_image(img, pcl, vehicle_to_image, pcl_attr):
     for i in range(proj_pcl_2d.shape[0]):
         cv2.circle(img, (int(proj_pcl_2d[i,0]),int(proj_pcl_2d[i,1])), 1, coloured_intensity[i])
 
-if len(sys.argv) != 2:
-    print("""Usage: python display_laser_on_image.py <datafile>
-Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
-    sys.exit(0)
+# if len(sys.argv) != 2:
+#     print("""Usage: python display_laser_on_image.py <datafile>
+# Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
+#     sys.exit(0)
 
 # Open a .tfrecord
-filename = sys.argv[1]
-datafile = WaymoDataFileReader(filename)
+# filename = sys.argv[1]
+datafile = WaymoDataFileReader("frame.tfrecord")
 
 # Generate a table of the offset of all frame records in the file.
 table = datafile.get_record_table()
@@ -102,9 +102,21 @@ print("There are %d frames in this file." % len(table))
 # Loop through the whole file
 ## and display 3D labels.
 for frameno,frame in enumerate(datafile):
+    break
 
-    # Get the top laser information
-    laser_name = dataset_pb2.LaserName.TOP
+# Get the top laser information
+list_pcl = []
+list_point_cloud_attr = []
+laser_names = [
+    dataset_pb2.LaserName.SIDE_LEFT,
+    dataset_pb2.LaserName.SIDE_RIGHT,
+    dataset_pb2.LaserName.TOP,
+    dataset_pb2.LaserName.REAR,
+    dataset_pb2.LaserName.FRONT,
+
+]
+for laser_name in laser_names:
+    # import ipdb; ipdb.set_trace()
     laser = utils.get(frame.lasers, laser_name)
     laser_calibration = utils.get(frame.context.laser_calibrations, laser_name)
 
@@ -112,53 +124,45 @@ for frameno,frame in enumerate(datafile):
     ri, camera_projection, range_image_pose = utils.parse_range_image_and_camera_projection(laser)
 
     # Convert the range image to a point cloud.
-    point_clound, point_cloud_attr = utils.project_to_pointcloud(frame, ri, camera_projection, range_image_pose, laser_calibration)
+    point_cloud, point_cloud_attr = utils.project_to_pointcloud(frame, ri, camera_projection, range_image_pose, laser_calibration)
+    list_pcl += [point_cloud]
+    list_point_cloud_attr += [point_cloud_attr]
 
-    # Get the front camera information
-    camera_name = dataset_pb2.CameraName.FRONT
-    camera_calibration = utils.get(frame.context.camera_calibrations, camera_name)
-    camera = utils.get(frame.images, camera_name)
+point_cloud = np.concatenate(list_pcl)
+point_cloud_attr = np.concatenate(list_point_cloud_attr)
+camera_name = dataset_pb2.CameraName.SIDE_RIGHT
+camera_calibration = utils.get(frame.context.camera_calibrations, camera_name)
+camera = utils.get(frame.images, camera_name)
 
-    # Get the transformation matrix for the camera.
-    vehicle_to_image = utils.get_image_transform(camera_calibration)
+# Get the transformation matrix for the camera.
+vehicle_to_image = utils.get_image_transform(camera_calibration)
 
-    # Decode the image
-    img = utils.decode_image(camera)
-    
-    # BGR to RGB
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+# Decode the image
+img = utils.decode_image(camera)
 
-    # Some of the labels might be fully hidden therefore we attempt to compute the label visibility
-    # by counting the number of LIDAR points inside each label bounding box.
+# BGR to RGB
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    # For each label, compute the transformation matrix from the vehicle space to the box space.
-    vehicle_to_labels = [np.linalg.inv(utils.get_box_transformation_matrix(label.box)) for label in frame.laser_labels]
-    vehicle_to_labels = np.stack(vehicle_to_labels)
+# Some of the labels might be fully hidden therefore we attempt to compute the label visibility
+# by counting the number of LIDAR points inside each label bounding box.
 
-    # Convert the pointcloud to homogeneous coordinates.
-    homo_point_cloud = np.concatenate((point_clound,np.ones_like(point_clound[:,0:1])),axis=1)
+# For each label, compute the transformation matrix from the vehicle space to the box space.
+vehicle_to_labels = [np.linalg.inv(utils.get_box_transformation_matrix(label.box)) for label in frame.laser_labels]
+vehicle_to_labels = np.stack(vehicle_to_labels)
 
-    # Transform the point cloud to the label space for each label.
-    # proj_pcl shape is [label, LIDAR point, coordinates]
-    proj_pcl = np.einsum('lij,bj->lbi', vehicle_to_labels, homo_point_cloud)
+# Convert the pointcloud to homogeneous coordinates.
+homo_point_cloud = np.concatenate((point_cloud,np.ones_like(point_cloud[:,0:1])),axis=1)
 
-    # For each pair of LIDAR point & label, check if the point is inside the label's box.
-    # mask shape is [label, LIDAR point]
-    mask = np.logical_and.reduce(np.logical_and(proj_pcl >= -1, proj_pcl <= 1),axis=2)
+# Transform the point cloud to the label space for each label.
+# proj_pcl shape is [label, LIDAR point, coordinates]
+proj_pcl = np.einsum('lij,bj->lbi', vehicle_to_labels, homo_point_cloud)
 
-    # Count the points inside each label's box.
-    counts = mask.sum(1)
+mask = np.logical_and.reduce(np.logical_and(proj_pcl >= -1, proj_pcl <= 1),axis=2)
 
-    # Keep boxes which contain at least 10 LIDAR points.
-    visibility = counts > 10
-
-    # Display the LIDAR points on the image.
-    display_laser_on_image(img, point_clound, vehicle_to_image, point_cloud_attr)
-    # Display the label's 3D bounding box on the image.
-    display_labels_on_image(camera_calibration, img, frame.laser_labels, visibility)
-
-    # Display the image
-    cv2.imwrite('img.jpg', img)
-    # cv2.imshow("Image", img)
-    # cv2.waitKey(10)
+counts = mask.sum(1)
+visibility = counts > 10
+visualize_point_cloud(point_cloud)
+display_laser_on_image(img, point_cloud, vehicle_to_image, point_cloud_attr)
+display_labels_on_image(camera_calibration, img, frame.laser_labels, visibility)
+cv2.imwrite('img.jpg', img)
 

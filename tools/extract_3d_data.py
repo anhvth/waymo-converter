@@ -25,7 +25,6 @@ import io
 
 import os
 import sys
-import os.path as osp
 
 from simple_waymo_open_dataset_reader import WaymoDataFileReader
 from simple_waymo_open_dataset_reader import dataset_pb2, label_pb2
@@ -123,7 +122,7 @@ def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
     # Project the point cloud onto the image.
     depth = proj_pcl
 
-
+    
     proj_pcl = proj_pcl[:, :2]/proj_pcl[:, 2:3]
     # Filter points which are outside the image.
     mask = np.logical_and(
@@ -134,7 +133,7 @@ def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
     # proj_pcl_attr = proj_pcl_attr[mask]
     depth = depth[mask]
     return depth
-
+    
     # Colour code the points based on distance.
     # depth = np.concatenate([proj_pcl, proj_pcl_attr[:, :1]], 1)# xy,v
     # return depth
@@ -190,13 +189,13 @@ def  is_complete_ann(annotation_path):
     except:
         return False
 
-def extract_tf_file(filename, save_dir, item_path=None):
+def extract_tf_file(filename, item_path=None):
     if item_path is not None:
         name = os.path.basename(item_path).split('.')[0]
     else:
         name = os.path.basename(filename).split('.')[0]
 
-    annotation_path = osp.join(save_dir, f'annotations/train_{name}.json')
+    annotation_path = f'./data/annotations/train_{name}.json'
     if is_complete_ann(annotation_path):
         return
 
@@ -209,7 +208,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
     print("There are %d frames in this file." % len(table))
     # Loop through the whole file
     # and display 3D labels.
-    img_prefex = osp.join(save_dir, 'image')
+    img_prefex = './data/image'
 
     os.makedirs(img_prefex, exist_ok=True)
 
@@ -257,7 +256,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
             image_id = images[-1]['id']
 
             # BGR to RGB
-
+            
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             if not os.path.exists(out_img_path):
                 mmcv.imwrite(img, out_img_path)
@@ -287,7 +286,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
 
             # Display the LIDAR points on the image.
             depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
-
+            
             # xi,yi,vi  (0.5, 1.6, 10m) # s[x,y,1]
 
             # Display the label's 3D bounding box on the image.
@@ -304,7 +303,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
                         bbox_3d=ann['vertex'].tolist(
                         ) if ann['vertex'] is not None else None, #xi,yi,zi
                         image_id=image_id,
-                        category_id=int(ann['label'].type),# 4 class , 3 class di duyen, 1 class SIGN,
+                        category_id=int(ann['label'].type),# 4 class , 3 class di duyen, 1 class SIGN, 
                         id=len(annotations),
                     )
                 )
@@ -351,18 +350,17 @@ def extract_tf_file(filename, save_dir, item_path=None):
 #     sys.exit(0)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         print("""Usage: python display_laser_on_image.py <datafile>
     Display the groundtruth 3D bounding boxes and LIDAR points on the front camera video stream.""")
         sys.exit(0)
     # Open a .tfrecord
 
+    def get_cmd(path):
+        return "python tools/extract_3d_data.py {path} && echo done && sleep 3600"
+        # return 
 
     filename = sys.argv[1]
-    save_dir = sys.argv[2]
-    def get_cmd(id, path):
-        sd = osp.dirname(save_dir)
-        return f'tmux new -s extract_3d_{sd}_{id} -d "python tools/extract_3d_data.py {path} {save_dir} && echo done && sleep 3600"'
     if os.path.isdir(filename):
         filenames = glob(os.path.join(filename, '*.tfrecord'))
         if len(filenames) == 0:
@@ -370,32 +368,24 @@ if __name__ == '__main__':
         num_process = 32
         nprocess = 0
         prev_is_enter = False
-        s = ""
-        for i, filename in tqdm(enumerate(list(sorted(filenames)))):
-            # fn = 'train_'+os.path.basename(filename).replace('.tfrecord', '.json')
-            # ann_path = './data/annotations/'+fn
-            # if is_complete_ann(ann_path):
-            #     continue
-            cmd = get_cmd(i, filename)
-            nprocess+=1
+        
+        f = open('cmd.sh','w') 
 
+        cmds = []
+        for filename in list(sorted(filenames)):
+            cmd = get_cmd(filename)
+            cmds += cmd
 
-            if not prev_is_enter and i!=0:
-                cmd = " | "+cmd
+        for i, cmd in enumerate(cmds):
+            if i % num_process == 0:
+                f.write(f"\ntmux new -s gen_{i} -d ")
+
+                f.write(f'"{cmd}"')
             else:
-                cmd = cmd
-                prev_is_enter = False
-            s += cmd
-            if nprocess == num_process:
-                s+="\n"
-                prev_is_enter = True
-                nprocess = 0
+                f.write(f'" && {cmd}"')
 
-
-        with open('cmd.sh','w') as f:
-            f.write(s)
-        print(s)
-
+        
+        f.close()
 
     elif '.tar' in filename:
         import tarfile
@@ -406,10 +396,9 @@ if __name__ == '__main__':
             try:
                 if item.path.endswith('tfrecord'):
                     byte_file = tar.extractfile(item.path)
-                    extract_tf_file(byte_file, save_dir, item.path)
+                    extract_tf_file(byte_file, item.path)
             except Exception as e:
                 print(e)
                 import ipdb; ipdb.set_trace()
     else:
         extract_tf_file(filename)
-
