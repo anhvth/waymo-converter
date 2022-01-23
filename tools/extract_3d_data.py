@@ -357,7 +357,7 @@ if __name__ == '__main__':
     # Open a .tfrecord
 
     def get_cmd(path):
-        return "python tools/extract_3d_data.py {path}"
+        return f"python tools/extract_3d_data.py {path}"
         # return 
 
     filename = sys.argv[1]
@@ -384,7 +384,7 @@ if __name__ == '__main__':
             elif i% num_process == 0:
                 _cmd = cmd
             else:
-                _cmd +=  cmd
+                _cmd +=  " && " + cmd
         f.close()
 
     elif '.tar' in filename:
