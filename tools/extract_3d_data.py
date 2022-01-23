@@ -123,7 +123,7 @@ def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
     # Project the point cloud onto the image.
     depth = proj_pcl
 
-    
+
     proj_pcl = proj_pcl[:, :2]/proj_pcl[:, 2:3]
     # Filter points which are outside the image.
     mask = np.logical_and(
@@ -134,7 +134,7 @@ def display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image):
     # proj_pcl_attr = proj_pcl_attr[mask]
     depth = depth[mask]
     return depth
-    
+
     # Colour code the points based on distance.
     # depth = np.concatenate([proj_pcl, proj_pcl_attr[:, :1]], 1)# xy,v
     # return depth
@@ -257,7 +257,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
             image_id = images[-1]['id']
 
             # BGR to RGB
-            
+
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             if not os.path.exists(out_img_path):
                 mmcv.imwrite(img, out_img_path)
@@ -287,7 +287,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
 
             # Display the LIDAR points on the image.
             depth_map = display_laser_on_image(img, pcl, pcl_attr, vehicle_to_image)
-            
+
             # xi,yi,vi  (0.5, 1.6, 10m) # s[x,y,1]
 
             # Display the label's 3D bounding box on the image.
@@ -304,7 +304,7 @@ def extract_tf_file(filename, save_dir, item_path=None):
                         bbox_3d=ann['vertex'].tolist(
                         ) if ann['vertex'] is not None else None, #xi,yi,zi
                         image_id=image_id,
-                        category_id=int(ann['label'].type),# 4 class , 3 class di duyen, 1 class SIGN, 
+                        category_id=int(ann['label'].type),# 4 class , 3 class di duyen, 1 class SIGN,
                         id=len(annotations),
                     )
                 )
@@ -357,11 +357,12 @@ if __name__ == '__main__':
         sys.exit(0)
     # Open a .tfrecord
 
-    def get_cmd(id, path):
-        return f'tmux new -s extract_3d_{id} -d "python tools/extract_3d_data.py {path} && echo done && sleep 3600"'
 
     filename = sys.argv[1]
     save_dir = sys.argv[2]
+    def get_cmd(id, path):
+        sd = osp.dirname(save_dir)
+        return f'tmux new -s extract_3d_{sd}_{id} -d "python tools/extract_3d_data.py {path} {save_dir} && echo done && sleep 3600"'
     if os.path.isdir(filename):
         filenames = glob(os.path.join(filename, '*.tfrecord'))
         if len(filenames) == 0:
@@ -395,7 +396,7 @@ if __name__ == '__main__':
             f.write(s)
         print(s)
 
-            
+
     elif '.tar' in filename:
         import tarfile
         print('TAR:', filename)
@@ -411,3 +412,4 @@ if __name__ == '__main__':
                 import ipdb; ipdb.set_trace()
     else:
         extract_tf_file(filename)
+
